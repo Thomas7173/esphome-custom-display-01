@@ -1,0 +1,87 @@
+sensor:
+  - platform: homeassistant
+    id: outdoor_temperature
+    entity_id: sensor.nussdorf_temperatur
+    on_value:
+      - logger.log: 
+          format: "Temperatur outdoor updated. Value: %.1f"
+          args: ['id(outdoor_temperature).state']
+      - lvgl.indicator.update:
+          id: temperature_needle
+          value: !lambda return x ;
+      - lvgl.label.update:
+          id: temperature_text_aussen
+          text:
+            #format: "%.1f°C"
+            format: "Aussen: %.1f°C"
+            args: [ 'x' ]
+ 
+  - platform: homeassistant
+    id: indoor_temperature
+    entity_id: sensor.temperature_forecast_next_hour
+    on_value:
+      - logger.log: 
+          format: "Temperatur indoor updated. Value: %.1f"
+          args: ['id(indoor_temperature).state']
+      - lvgl.label.update:
+          id: temperature_text_innen
+          text:
+            #format: "%.1f°C"
+            format: "Innen: %.1f°C"
+            args: [ 'x' ] 
+
+  - platform: homeassistant
+    id: outdoor_humidity
+    entity_id: weather.forecast_home
+    attribute: humidity
+    on_value:
+      - logger.log: 
+          format: "Humidity outdoor updated. Value: %.1f"
+          args: ['id(outdoor_humidity).state']
+      - lvgl.label.update:
+          id: lbl_humidity_text_aussen
+          text:
+            format: "%.1f%"
+            args: [ 'x' ] 
+            
+  - platform: homeassistant
+    id: outdoor_wind_speed
+    entity_id: weather.forecast_home
+    attribute: wind_speed
+    on_value:
+      - logger.log: 
+          format: "Wind Speed outdoor updated. Value: %.1f"
+          args: ['id(outdoor_wind_speed).state']
+      - lvgl.label.update:
+          id: lbl_wind_speed_text_aussen
+          text:
+            format: "%.1fkm/h"
+            args: [ 'x' ] 
+
+  - platform: homeassistant
+    id: outdoor_wind_bearing
+    entity_id: weather.forecast_home
+    attribute: wind_bearing
+    on_value:
+      - logger.log: 
+          format: "Wind bearing outdoor updated. Value: %.1f"
+          args: ['id(outdoor_wind_bearing).state']
+      - lvgl.label.update:
+          id: lbl_wind_bearing_text_aussen
+          text:
+            format: "%d"
+            args: [ 'x' ] 
+
+  - platform: homeassistant
+    id: outdoor_dew_point
+    entity_id: weather.forecast_home
+    attribute: dew_point
+    on_value:
+      - logger.log: 
+          format: "Dew Point outdoor updated. Value: %.1f"
+          args: ['id(outdoor_dew_point).state']
+      - lvgl.label.update:
+          id: lbl_dew_point_text_aussen
+          text:
+            format: "%.1f°C"
+            args: [ 'x' ] 

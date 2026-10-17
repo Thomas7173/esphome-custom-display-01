@@ -1,0 +1,674 @@
+substitutions:
+  #variable for device name
+  devicename: "esphome-display-01"
+  device_verbose_name: "ESPHome Display 01"
+  # IP address (wird in API Access Key verwendet)
+  ip4address: "174"
+  # project info
+  author_name: "Thomas"
+  project_name: "Custom Display 01"
+  project_version: "0.0.1"
+  # Guardian
+  heap_threshold: "1000"
+  memory_checks: "5"
+
+
+esphome:
+  name: ${devicename}
+  name_add_mac_suffix: false
+  friendly_name: ${device_verbose_name}
+  on_boot:
+    - delay: 5s
+    - lvgl.widget.hide: boot_screen
+
+<<: !include ../includes/.basicconfig_esp32_display.yaml      
+
+logger:
+    level: DEBUG
+    #level: INFO
+
+
+spi:
+  - id: lcd_spi
+    clk_pin: GPIO48
+    mosi_pin: GPIO47
+
+i2c:
+  id: touchscreen_bus
+  sda: GPIO19
+  scl:
+    number: 45
+    ignore_strapping_warning: true
+
+<<: !include displays/.switch.yaml 
+<<: !include displays/.sensor.yaml 
+<<: !include displays/.binary_sensor.yaml
+<<: !include displays/.output.yaml      
+<<: !include displays/.light.yaml      
+<<: !include displays/.image.yaml 
+<<: !include displays/.number.yaml 
+<<: !include displays/.font.yaml 
+<<: !include displays/.text_sensor.yaml 
+
+display:
+  - platform: st7701s
+    id: tft_display
+    dimensions:
+      width: 480
+      height: 480
+    #    rotation: 270    #uncomment for placement with down-facing USB socket
+    spi_mode: MODE3
+    data_rate: 2MHz
+    color_order: RGB
+    invert_colors: False
+    cs_pin: 39
+    de_pin: 18
+    hsync_pin: 16
+    vsync_pin: 17
+    pclk_pin: 21
+    pclk_frequency: 12MHz
+    pclk_inverted: False
+    hsync_pulse_width: 8
+    hsync_front_porch: 10
+    hsync_back_porch: 20
+    vsync_pulse_width: 8
+    vsync_front_porch: 10
+    vsync_back_porch: 10
+    update_interval: never
+    auto_clear_enabled: False
+    init_sequence:
+      - 1
+      - [0xFF, 0x77, 0x01, 0x00, 0x00, 0x10] # CMD2_BKSEL_BK0
+      - [0xCD, 0x00] # disable MDT flag
+    data_pins:
+      red: [11, 12, 13, 14, 0]
+      green: [8, 20, 3, 46, 9, 10]
+      blue: [4, 5, 6, 7, 15]
+
+touchscreen:
+  - platform: gt911
+    id: tft_touch
+    display: tft_display
+#    transform:     #uncomment for placement with down-facing USB socket
+#      swap_xy: true
+#      mirror_x: true    
+    # on_touch:
+    #   then:
+    #     ...
+    # on_update:
+    #   then:
+    #     ...
+    # on_release:
+    #   then:
+    on_release:
+      then:
+        - if:
+            condition: lvgl.is_paused
+            then:
+              - lvgl.resume:
+              - lvgl.widget.redraw:
+              - light.turn_on: display_backlight
+
+
+lvgl:
+  theme:
+    dark_mode: true
+  style_definitions:
+    - id: header_footer
+      bg_color: 0x2F8CD8
+      bg_grad_color: 0x005782
+      bg_grad_dir: VER
+      bg_opa: COVER
+      border_opa: TRANSP
+      radius: 0
+      pad_all: 0
+      pad_row: 0
+      pad_column: 0
+      border_color: 0x0077b3
+      text_color: 0xFFFFFF
+      width: 100%
+      height: 30    
+      
+  displays:
+    - tft_display
+  top_layer:
+    widgets:
+      - buttonmatrix:
+          align: bottom_mid
+          styles: header_footer
+          pad_all: 0
+          outline_width: 0
+          id: top_layer
+          items:
+            styles: header_footer
+          rows:
+            - buttons:
+              - id: page_prev
+                text: "\uF053"
+                on_press:
+                  then:
+                    lvgl.page.previous:
+              - id: page_home
+                text: "\uF015"
+                on_press:
+                  then:
+                    lvgl.page.show: meter_page
+              - id: page_next
+                text: "\uF054"
+                on_press:
+                  then:
+                    lvgl.page.next:
+      - label:
+          text: "\uF1EB"
+          id: lbl_hastatus
+          hidden: true
+          align: top_right
+          x: -2
+          y: 7
+          text_align: right
+          text_color: 0xFFFFFF 
+      # Last Object is Bootscreen
+      - obj:
+          id: boot_screen
+          x: 0
+          y: 0
+          width: 100%
+          height: 100%
+          bg_color: 0xffffff
+          bg_opa: COVER
+          radius: 0
+          pad_all: 0
+          border_width: 0
+          widgets:
+            - image:
+                align: CENTER
+                src: boot_logo
+                y: -50
+            - spinner:
+                align: CENTER
+                y: 50
+                height: 50
+                width: 50
+                spin_time: 1s
+                arc_length: 60deg
+                arc_width: 8
+                indicator:
+                  arc_color: 0x18bcf2
+                  arc_width: 8
+          on_press:
+            - lvgl.widget.hide: boot_screen          
+
+  on_idle:
+    timeout: !lambda "return (id(display_timeout).state * 1000);"
+    then:
+      - logger.log: "LVGL is idle"
+      - light.turn_off: display_backlight
+      - lvgl.pause:
+          
+  pages:
+    - id: meter_page
+      widgets:
+        - obj:
+            align: TOP_MID
+            styles: header_footer
+            widgets:
+              - label:
+                  text: "Aussentemperatur"
+                  align: CENTER
+                  text_align: CENTER
+                  text_color: 0xFFFFFF
+                  text_font: montserrat_24
+        - meter:
+            id: anzeige
+            text_color: 0xFFFFFF
+            text_font: montserrat_22
+            align: CENTER
+            height: 380
+            width: 380
+            bg_opa: TRANSP
+            scales:
+              - range_from: -10 # scale for the value labels
+                range_to: 40
+                angle_range: 240
+                rotation: 150
+                ticks:
+                  width: 1
+                  count: 51
+                  length: 10
+                  color: 0x000000
+                  major:
+                    stride: 5
+                    width: 3
+                    length: 15
+                    color: 0x000000
+                    label_gap: 15
+                indicators:
+                  - tick_style:
+                      start_value: -10
+                      end_value: 40
+                      color_start: 0x0000bd
+                      color_end: 0xbd0000
+                      width: 2
+                      
+              - range_from: -10 # scale for the needle value
+                range_to: 40
+                angle_range: 240
+                rotation: 150
+                indicators:
+                  - line:
+                      id: temperature_needle
+                      width: 5
+                      color: 0xFF0000
+                      length: 80%
+                      
+            widgets:
+              - label:
+                  id: temperature_text_aussen
+                  text: "Aussen: -.-°C"
+                  align: CENTER
+                  text_font: montserrat_26
+                  text_color: 0x0000FF
+                  y: 95
+              - label:
+                  id: temperature_text_innen
+                  text: "Innen: -.-°C"
+                  align: CENTER
+                  text_font: montserrat_26
+                  text_color: 0x0000FF
+                  y: 125    
+
+    - id: weather_page
+      widgets:
+        - obj:
+            align: TOP_MID
+            styles: header_footer
+            widgets:
+              - label:
+                  text: "Wetter"
+                  align: CENTER
+                  text_align: CENTER
+                  text_color: 0xFFFFFF
+                  text_font: montserrat_24
+        - obj:
+            align: CENTER
+            width: 400
+            height: 400
+            pad_all: 10
+            layout:
+              pad_column: 0
+              type: GRID
+              grid_rows: [FR(48), FR(13), FR(13), FR(13), FR(13)]
+              grid_columns: [FR(10), FR(40), FR(40), FR(10)]
+            widgets:
+              - label:
+                  text: "\U000F14E4"
+                  id: lbl_weather_forecast_condition_icon
+                  text_font: icons_100
+                  text_align: CENTER
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 0
+                  grid_cell_column_span: 2
+                  grid_cell_x_align: CENTER
+                  grid_cell_y_align: START
+
+              - label:
+                  text: "Unknown"
+                  id: lbl_weather_forecast_condition_name
+                  text_align: CENTER
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 2
+                  grid_cell_column_span: 2
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: CENTER
+
+              - label:
+                  text: "Feuchte:"
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 1
+
+              - label:
+                  text: "--.- °C"
+                  id: lbl_humidity_text_aussen
+                  text_align: RIGHT
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 2
+                  grid_cell_x_align: STRETCH
+
+              - label:
+                  text: "Wind:"
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 1
+
+              - label:
+                  text: "--.- °C"
+                  id: lbl_wind_speed_text_aussen
+                  text_align: RIGHT
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 2
+                  grid_cell_x_align: STRETCH
+
+              - label:
+                  text: "Windrichtung:"
+                  grid_cell_row_pos: 3
+                  grid_cell_column_pos: 1
+
+              - label:
+                  text: "-- °"
+                  id: lbl_wind_bearing_text_aussen
+                  text_align: RIGHT
+                  grid_cell_row_pos: 3
+                  grid_cell_column_pos: 2
+                  grid_cell_x_align: STRETCH
+
+              - label:
+                  text: "Taupunkt:"
+                  grid_cell_row_pos: 4
+                  grid_cell_column_pos: 1
+
+              - label:
+                  text: "--.- °C"
+                  id: lbl_dew_point_text_aussen
+                  text_align: RIGHT
+                  grid_cell_row_pos: 4
+                  grid_cell_column_pos: 2
+                  grid_cell_x_align: STRETCH
+
+    - id: temperature_page
+      widgets:
+        - obj:
+            align: TOP_MID
+            styles: header_footer
+            widgets:
+              - label:
+                  text: "Temperaturen"
+                  align: CENTER
+                  text_align: CENTER
+                  text_color: 0xFFFFFF
+                  text_font: montserrat_24
+
+    - id: power_page
+      widgets:
+        - obj:
+            align: TOP_MID
+            styles: header_footer
+            widgets:
+              - label:
+                  text: "Stromverbrauch"
+                  align: CENTER
+                  text_align: CENTER
+                  text_color: 0xFFFFFF
+                  text_font: montserrat_24    
+
+    - id: energy_page 
+      widgets:
+          - obj:
+              align: TOP_MID
+              styles: header_footer
+              widgets:
+                - label:
+                    text: "Energieverbrauch"
+                    align: CENTER
+                    text_align: CENTER
+                    text_color: 0xFFFFFF
+                    text_font: montserrat_24
+
+    - id: about_page 
+      widgets:
+          - obj:
+              align: TOP_MID
+              styles: header_footer
+              widgets:
+                - label:
+                    text: "Über dieses Display"
+                    align: CENTER
+                    text_align: CENTER
+                    text_color: 0xFFFFFF
+                    text_font: montserrat_24
+          - obj:
+              x: 15
+              y: 40
+              width: 450
+              height: 400
+              scrollbar_mode: "OFF"
+              bg_color: 0x070E1B
+              bg_opa: 95%
+              border_color: 0xFFFFFF   #0x162038
+              border_width: 1
+              border_opa: 20%
+              radius: 16
+              shadow_width: 0
+              shadow_color: 0x06090F
+              shadow_opa: 0% 
+              widgets:                             
+                - obj:
+                    id: about_obj01
+                    x: 5
+                    y: 5
+                    width: 440
+                    height: 74
+                    bg_color: 0x070E1B
+                    bg_opa: 95%
+                    border_width: 1
+                    border_color: 0x162038
+                    border_opa: 20%
+                    radius: 16
+                    shadow_width: 0
+                    shadow_color: 0x10B981
+                    shadow_opa: 0%
+                    scrollbar_mode: "OFF"
+                    pad_all: 0
+                    widgets:
+                      - label:
+                          id: about_lbl01
+                          x: 21
+                          y: 4
+                          width: 252
+                          height: 18
+                          text: "Name:"
+                          text_color: 0xF1F5F9
+                          text_align: LEFT
+                          long_mode: CLIP
+                          text_font: montserrat_14
+                      - label:
+                          id: about_device_name
+                          x: 59
+                          y: 33
+                          width: 374
+                          height: 40
+                          text: "${project_name}"
+                          text_color: 0x10B981
+                          text_align: LEFT
+                          long_mode: CLIP
+                          text_font: montserrat_20
+
+                - obj:
+                    id: about_obj02
+                    x: 5
+                    y: 84
+                    width: 440
+                    height: 74
+                    bg_color: 0x070E1B
+                    bg_opa: 95%
+                    border_width: 1
+                    border_color: 0x162038
+                    border_opa: 20%
+                    radius: 16
+                    shadow_width: 0
+                    shadow_color: 0x10B981
+                    shadow_opa: 0%
+                    scrollbar_mode: "OFF"
+                    pad_all: 0
+                    widgets:
+                      - label:
+                          id: about_lbl02
+                          x: 21
+                          y: 4
+                          width: 252
+                          height: 18
+                          text: "Software-Version:"
+                          text_color: 0xF1F5F9
+                          text_align: LEFT
+                          long_mode: CLIP
+                          text_font: montserrat_14
+                      - label:
+                          id: about_software_version
+                          x: 59
+                          y: 33
+                          width: 374
+                          height: 40
+                          text: "${project_version}"
+                          text_color: 0x10B981
+                          text_align: LEFT
+                          long_mode: CLIP
+                          text_font: montserrat_20
+
+                - obj:
+                    id: about_obj03
+                    x: 5
+                    y: 163
+                    width: 440
+                    height: 74
+                    bg_color: 0x070E1B
+                    bg_opa: 95%
+                    border_width: 1
+                    border_color: 0x162038
+                    border_opa: 20%
+                    radius: 16
+                    shadow_width: 0
+                    shadow_color: 0x10B981
+                    shadow_opa: 0%
+                    scrollbar_mode: "OFF"
+                    pad_all: 0
+                    widgets:
+                      - label:
+                          id: about_lbj03
+                          x: 21
+                          y: 4
+                          width: 252
+                          height: 18
+                          text: "IP-Adresse:"
+                          text_color: 0xF1F5F9
+                          text_align: LEFT
+                          long_mode: CLIP
+                          text_font: montserrat_14
+                      - label:
+                          id: about_ip_address
+                          x: 59
+                          y: 33
+                          width: 374
+                          height: 40
+                          text: "192.168.x.x"
+                          text_color: 0x10B981
+                          text_align: LEFT
+                          long_mode: CLIP
+                          text_font: montserrat_20
+
+                - obj:
+                    id: about_obj04
+                    x: 5
+                    y: 242
+                    width: 440
+                    height: 74
+                    bg_color: 0x070E1B
+                    bg_opa: 95%
+                    border_width: 1
+                    border_color: 0x162038
+                    border_opa: 20%
+                    radius: 16
+                    shadow_width: 0
+                    shadow_color: 0x10B981
+                    shadow_opa: 0%
+                    scrollbar_mode: "OFF"
+                    pad_all: 0
+                    widgets:
+                      - label:
+                          id: about_lbl04
+                          x: 21
+                          y: 4
+                          width: 252
+                          height: 18
+                          text: "ESPHome Version:"
+                          text_color: 0xF1F5F9
+                          text_align: LEFT
+                          long_mode: CLIP
+                          text_font: montserrat_14
+                      - label:
+                          id: about_esphome_version
+                          x: 59
+                          y: 33
+                          width: 374
+                          height: 40
+                          text: "ESPHome vers"
+                          text_color: 0x10B981
+                          text_align: LEFT
+                          long_mode: CLIP
+                          text_font: montserrat_20
+
+                - obj:
+                    id: about_obj05
+                    x: 5
+                    y: 321
+                    width: 440
+                    height: 74
+                    bg_color: 0x070E1B
+                    bg_opa: 95%
+                    border_width: 1
+                    border_color: 0x162038
+                    border_opa: 20%
+                    radius: 16
+                    shadow_width: 0
+                    shadow_color: 0x10B981
+                    shadow_opa: 0%
+                    scrollbar_mode: "OFF"
+                    pad_all: 0
+                    widgets:
+                      - label:
+                          id: about_lbl05
+                          x: 21
+                          y: 4
+                          width: 252
+                          height: 18
+                          text: "SSID:"
+                          text_color: 0xF1F5F9
+                          text_align: LEFT
+                          long_mode: CLIP
+                          text_font: montserrat_14
+                      - label:
+                          id: about_ssid
+                          x: 59
+                          y: 33
+                          width: 374
+                          height: 40
+                          text: "WLAN SSID"
+                          text_color: 0x10B981
+                          text_align: LEFT
+                          long_mode: CLIP
+                          text_font: montserrat_20
+                      
+
+# text_sensor:
+# # ---------------------------------------------------
+# # displays WIFI Information
+# # ---------------------------------------------------  
+#   - platform: wifi_info
+#     ip_address:
+#       name: Display IP Address
+#       id: display_ip_address
+
+# # ---------------------------------------------------
+# # displays ESPHome Version that was uised for compiling
+# # ---------------------------------------------------  
+#   - platform: version
+#     name: "ESPHome Version"
+#     hide_timestamp: True
+#     hide_hash: True
+  
+#   - platform: template
+#     name: Software Version
+#     entity_category: "diagnostic"
+#     lambda: return {"${project_version}"}; 
+
+#   - platform: template
+#     name: Project name
+#     entity_category: "diagnostic"
+#     lambda: return {"${project_name}"};  

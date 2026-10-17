@@ -1,0 +1,49 @@
+text_sensor:
+# # ---------------------------------------------------
+# # displays WIFI Information
+# # ---------------------------------------------------  
+  - platform: wifi_info
+    ip_address:
+      name: Display IP Address
+      id: display_ip_address
+      filters:
+        - prepend:  "IP: "
+      on_value:
+        then:
+          - logger.log: 
+              format: "IP Adress. Value: %s"
+              args: ['id(display_ip_address).state']
+          - lvgl.label.update:
+              id: about_ip_address
+              text: !lambda return id(display_ip_address).state;
+
+    ssid:
+      name: Display SSID
+      id: display_ssid
+      filters:
+        - prepend:  "SSID: "
+      on_value:
+        then:
+          - logger.log: 
+              format: "SSID. Value: %s"
+              args: ['id(display_ssid).state']
+          - lvgl.label.update:
+              id: about_ssid
+              text: !lambda return id(display_ssid).state;
+
+# ---------------------------------------------------
+# displays ESPHome Version that was uised for compiling
+# ---------------------------------------------------  
+  - platform: version
+    name: "ESPHome Version"
+    id: "esphome_version"
+    hide_timestamp: True
+    hide_hash: True
+    on_value:
+      then:
+        - logger.log: 
+            format: "ESPHome Version. Value: %s"
+            args: ['id(esphome_version).state']
+        - lvgl.label.update:
+            id: about_esphome_version
+            text: !lambda return  id(esphome_version).state;
